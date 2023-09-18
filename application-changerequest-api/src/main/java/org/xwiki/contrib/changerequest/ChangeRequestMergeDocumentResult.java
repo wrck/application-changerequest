@@ -20,11 +20,13 @@
 package org.xwiki.contrib.changerequest;
 
 import java.util.Date;
+import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.xwiki.diff.Conflict;
 import org.xwiki.stability.Unstable;
 import org.xwiki.store.merge.MergeDocumentResult;
 
@@ -43,6 +45,8 @@ public class ChangeRequestMergeDocumentResult
 {
     private final FileChange fileChange;
     private MergeDocumentResult wrappedResult;
+
+    private MergeDocumentResult wrappedResultWithCRFallback;
     private final boolean isConflicting;
     private String documentTitle;
     private final String previousVersion;
@@ -106,6 +110,17 @@ public class ChangeRequestMergeDocumentResult
     }
 
     /**
+     * @return {@code true} if the conflicts are only about content of the document.
+     * @since 1.10
+     */
+    public boolean hasOnlyContentConflicts()
+    {
+        List<Conflict<?>> conflicts = this.wrappedResult.getConflicts(MergeDocumentResult.DocumentPart.CONTENT);
+        int contentConflictsSize = (conflicts != null) ? conflicts.size() : 0;
+        return contentConflictsSize > 0 && contentConflictsSize == this.wrappedResult.getConflictsNumber();
+    }
+
+    /**
      * @return the document title to use for displaying the result.
      */
     public String getDocumentTitle()
@@ -141,6 +156,32 @@ public class ChangeRequestMergeDocumentResult
     }
 
     /**
+     * Result of the merge when the conflicts are solved with using the CR version.
+     * @return the wrapped {@link MergeDocumentResult} when this change is of type
+     *       {@link FileChange.FileChangeType#EDITION} and conflicts have been solved using the version in the change
+     *       request, or {@code null} in case there was no conflict
+     * @since 1.10
+     */
+    public MergeDocumentResult getWrappedResultWithCRFallback()
+    {
+        return wrappedResultWithCRFallback;
+    }
+
+    /**
+     * Set the result of the merge when conflicts are solved using the change request version.
+     * @param wrappedResultWithCRFallback the result of the merge when there was conflicts and they're solved with the
+     *                                    change request version
+     * @return the current instance
+     * @since 1.10
+     */
+    public ChangeRequestMergeDocumentResult setWrappedResultWithCRFallback(
+        MergeDocumentResult wrappedResultWithCRFallback)
+    {
+        this.wrappedResultWithCRFallback = wrappedResultWithCRFallback;
+        return this;
+    }
+
+    /**
      * @return the file change concerned for this merge.
      * @since 0.7
      */
@@ -154,8 +195,11 @@ public class ChangeRequestMergeDocumentResult
      */
     public String getIdentifier()
     {
-        return StringUtils.replace(String.format("%s_%s_%s", fileChange.getVersion(),
-            previousVersion, previousVersionDate.getTime()), ".", "dot");
+        return StringUtils.replace(String.format("%s_%s_%s_%s",
+            fileChange.getId(),
+            fileChange.getVersion(),
+            previousVersion,
+            previousVersionDate.getTime()), ".", "dot");
     }
 
     @Override

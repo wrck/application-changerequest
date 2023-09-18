@@ -77,7 +77,7 @@
     &lt;input type="hidden" name="changeType" value="settitle" /&gt;
     &lt;h1 class="editable"&gt;
       &lt;span class="edit-title-icon"&gt;$services.icon.renderHTML('pencil')&lt;/span&gt;
-      &lt;label class="sr-only" for="edit-title-input"&gt;$doc.title&lt;/label&gt;
+      &lt;label class="sr-only" for="edit-title-input"&gt;$escapetool.xml($doc.title)&lt;/label&gt;
       &lt;input type="text" id="edit-title-input" name="new-title" value="$escapetool.xml($doc.title)" /&gt;
     &lt;/h1&gt;
     &lt;div class="title-button-wrapper hidden"&gt;
@@ -957,12 +957,19 @@ require(['jquery', 'bootstrap'], function ($) {
     // Change the diff based on the action chosen.
     self.radioSelect = function () {
       var selectedValue = $('#changeRequestConflictModal input[name=warningConflictAction]:checked').val();
-      if (selectedValue == "keepChangeRequest") {
-        self.requestModal("NEXT", "MERGED");
-        // It's the next and current value which will be used for the merge, so better use them in case of custom
-        // conflicts resolution.
-      } else if (selectedValue == "keepPublished" || selectedValue == "custom") {
-        self.requestModal("CURRENT", "NEXT");
+      var filechangetype = $('#changeRequestConflictModal').attr('data-filechangetype');
+      if (filechangetype == "EDITION") {
+        if (selectedValue == "keepChangeRequest" || selectedValue == "custom") {
+          self.requestModal("CURRENT", "MERGED_CRFALLBACK");
+        } else if (selectedValue == "keepPublished") {
+          self.requestModal("CURRENT", "MERGED");
+        }
+      } else {
+        if (selectedValue == "keepChangeRequest" || selectedValue == "custom") {
+          self.requestModal("CURRENT", "NEXT");
+        } else if (selectedValue == "keepPublished") {
+          self.requestModal("NEXT", "CURRENT");
+        }
       }
     };
     
@@ -1006,6 +1013,21 @@ require(['jquery', 'bootstrap'], function ($) {
       });
     };
     
+    self.overrideCustomChoicesTranslations = function () {
+      if ($('#changeRequestConflictModal .custom-resolution-translations')) {
+        var choiceTranslations = {
+          'current': $('#changeRequestConflictModal .custom-resolution-translations .current').text(),
+          'next': $('#changeRequestConflictModal .custom-resolution-translations .next').text(),
+          'previous': $('#changeRequestConflictModal .custom-resolution-translations .previous').text(),
+          'custom': $('#changeRequestConflictModal .custom-resolution-translations .custom').text()
+        }
+        
+        $('select[name="conflict_decision_select"] option').each(function () {
+          $(this).text(choiceTranslations[$(this).val()]);
+        });
+      }
+    }
+    
     self.initModal = function() {
       var modal = $('#changeRequestConflictModal');
 
@@ -1019,6 +1041,7 @@ require(['jquery', 'bootstrap'], function ($) {
         $('#changeRequestConflictModal input[name=warningConflictAction]').on('change', self.radioSelect);
         $('#changeRequestConflictChangeDiff').on('click', self.requestModal);
         $('#changeRequestConflictSubmitButton').on('click', self.submitAction);
+        self.overrideCustomChoicesTranslations();
         modal.modal('show');
       }
     };
@@ -1617,7 +1640,6 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
     $.get(discussionPageUrl, {
       messageReference: messageReference,
       form_token: xm.form_token,
-      outputSyntax: 'plain',
       changeRequestId: changeRequestId
     }).done(function (data) {
       var discussionContent = $(data);
@@ -1959,7 +1981,7 @@ require(['CommentEditor', 'DiffSnippet', 'jquery', 'xwiki-meta'], function (Comm
   // second element is the diffBlockId
   var getEntityReferenceAndDiffBlock = function (element) {
     var diffBlockId = element.parents('.diff-container').parent().prev('.diff-header').attr('data-property-name');
-    var entityReference = element.parents('.diff-group').children('dt').first().attr('data-reference');
+    var entityReference = element.parents('dd').last().prevAll('dt').first().attr('data-reference');
     return [entityReference, diffBlockId];
   }
   
@@ -2167,7 +2189,7 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
     var diffId = discussion.attr('data-diffid');
     
     // try first to find the diff file with same exact id
-    var mainContainer = $('.diff-body[data-diffid="' + diffId + '"]');
+    var mainContainer = $('.diff-body[data-diffid*="' + diffId + '"]');
     var outdated = false;
     var line;
     
@@ -2513,9 +2535,16 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
       return;
     }
     event.preventDefault();
-    $(document).trigger('xwiki:actions:cancel');
     cancelled = true;
-    $(this).trigger('click');
+    // We need to call beforeSave first to put the data in the actual content field.
+    $(document).trigger('xwiki:actions:beforeSave');
+    var editForm = $('.cr-description &gt; form');
+    var actionUrl = editForm.attr('action');
+    $(document).trigger('xwiki:actions:cancel');
+    // We use ajax to send the form to workaround CRAPP-288
+    $.post(actionUrl, editForm.serialize()).done(function (data) {
+      window.location.href = new XWiki.Document(xm.documentReference).getURL('view');
+    });
   };
   
   var cancelDescription = function () {
@@ -2756,10 +2785,6 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
     <property>
       <code>'use strict';
 require(['jquery', 'xwiki-meta'], function ($, xm) {
-  var editTitle = function () {
-    console.log("Edit title");
-  };
-  
   var displayButtons = function () {
     $('.title-button-wrapper').removeClass('hidden');
   };
@@ -2776,6 +2801,18 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
       $('#document-title').empty().append(editTitleForm);
       $('input#edit-title-input').on('focus', displayButtons);
       $('#cancel-title').on('click', cancelTitle);
+      
+      // We use ajax to send the form to workaround CRAPP-288
+      $('#crTitleForm').on('submit', function(event) {
+        event.preventDefault();
+        var actionUrl = $('#crTitleForm').attr('action');
+        $.post(actionUrl, {
+          'changeType': 'settitle',
+          'new-title': $('input#edit-title-input').val()
+        }).done(function (data) {
+          location.reload();
+        });
+      });
     }
   };
   
@@ -4950,6 +4987,132 @@ input#edit-title-input:focus, .edit-title-icon:hover {
   </object>
   <object>
     <name>ChangeRequest.Code.ChangeRequestSheet</name>
+    <number>4</number>
+    <className>XWiki.StyleSheetExtension</className>
+    <guid>3545a82e-4123-4c21-b241-d7f5f5c5b783</guid>
+    <class>
+      <name>XWiki.StyleSheetExtension</name>
+      <customClass/>
+      <customMapping/>
+      <defaultViewSheet/>
+      <defaultEditSheet/>
+      <defaultWeb/>
+      <nameField/>
+      <validationScript/>
+      <cache>
+        <cache>0</cache>
+        <defaultValue>long</defaultValue>
+        <disabled>0</disabled>
+        <displayType>select</displayType>
+        <freeText>forbidden</freeText>
+        <largeStorage>0</largeStorage>
+        <multiSelect>0</multiSelect>
+        <name>cache</name>
+        <number>5</number>
+        <prettyName>Caching policy</prettyName>
+        <relationalStorage>0</relationalStorage>
+        <separator> </separator>
+        <separators>|, </separators>
+        <size>1</size>
+        <unmodifiable>0</unmodifiable>
+        <values>long|short|default|forbid</values>
+        <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
+      </cache>
+      <code>
+        <contenttype>PureText</contenttype>
+        <disabled>0</disabled>
+        <editor>PureText</editor>
+        <name>code</name>
+        <number>2</number>
+        <prettyName>Code</prettyName>
+        <restricted>0</restricted>
+        <rows>20</rows>
+        <size>50</size>
+        <unmodifiable>0</unmodifiable>
+        <classType>com.xpn.xwiki.objects.classes.TextAreaClass</classType>
+      </code>
+      <contentType>
+        <cache>0</cache>
+        <disabled>0</disabled>
+        <displayType>select</displayType>
+        <freeText>forbidden</freeText>
+        <largeStorage>0</largeStorage>
+        <multiSelect>0</multiSelect>
+        <name>contentType</name>
+        <number>6</number>
+        <prettyName>Content Type</prettyName>
+        <relationalStorage>0</relationalStorage>
+        <separator> </separator>
+        <separators>|, </separators>
+        <size>1</size>
+        <unmodifiable>0</unmodifiable>
+        <values>CSS|LESS</values>
+        <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
+      </contentType>
+      <name>
+        <disabled>0</disabled>
+        <name>name</name>
+        <number>1</number>
+        <prettyName>Name</prettyName>
+        <size>30</size>
+        <unmodifiable>0</unmodifiable>
+        <classType>com.xpn.xwiki.objects.classes.StringClass</classType>
+      </name>
+      <parse>
+        <disabled>0</disabled>
+        <displayFormType>select</displayFormType>
+        <displayType>yesno</displayType>
+        <name>parse</name>
+        <number>4</number>
+        <prettyName>Parse content</prettyName>
+        <unmodifiable>0</unmodifiable>
+        <classType>com.xpn.xwiki.objects.classes.BooleanClass</classType>
+      </parse>
+      <use>
+        <cache>0</cache>
+        <disabled>0</disabled>
+        <displayType>select</displayType>
+        <freeText>forbidden</freeText>
+        <largeStorage>0</largeStorage>
+        <multiSelect>0</multiSelect>
+        <name>use</name>
+        <number>3</number>
+        <prettyName>Use this extension</prettyName>
+        <relationalStorage>0</relationalStorage>
+        <separator> </separator>
+        <separators>|, </separators>
+        <size>1</size>
+        <unmodifiable>0</unmodifiable>
+        <values>currentPage|onDemand|always</values>
+        <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
+      </use>
+    </class>
+    <property>
+      <cache>long</cache>
+    </property>
+    <property>
+      <code>#changeRequestConflictModal #changes-info::before {
+  display: none;
+}
+#changeRequestConflictModal #changes-info::after {
+  display: none;
+}</code>
+    </property>
+    <property>
+      <contentType>CSS</contentType>
+    </property>
+    <property>
+      <name>conflict</name>
+    </property>
+    <property>
+      <parse>0</parse>
+    </property>
+    <property>
+      <use>onDemand</use>
+    </property>
+  </object>
+  <object>
+    <name>ChangeRequest.Code.ChangeRequestSheet</name>
     <number>0</number>
     <className>XWiki.UIExtensionClass</className>
     <guid>ad7486e2-242f-4f22-8875-2b93ad9852b9</guid>
@@ -4988,7 +5151,7 @@ input#edit-title-input:focus, .edit-title-icon:hover {
         <separators>|, </separators>
         <size>5</size>
         <unmodifiable>0</unmodifiable>
-        <values>action=Action|doc.reference=Document|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.headers|request.parameters=Request parameters|request.remoteAddr|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
+        <values>action=Action|doc.reference=Document|doc.revision|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.headers|request.parameters=Request parameters|request.remoteAddr|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
         <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
       </async_context>
       <async_enabled>
@@ -5150,7 +5313,7 @@ input#edit-title-input:focus, .edit-title-icon:hover {
         <separators>|, </separators>
         <size>5</size>
         <unmodifiable>0</unmodifiable>
-        <values>action=Action|doc.reference=Document|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.headers|request.parameters=Request parameters|request.remoteAddr|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
+        <values>action=Action|doc.reference=Document|doc.revision|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.headers|request.parameters=Request parameters|request.remoteAddr|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
         <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
       </async_context>
       <async_enabled>
@@ -5413,7 +5576,7 @@ input#edit-title-input:focus, .edit-title-icon:hover {
         <separators>|, </separators>
         <size>5</size>
         <unmodifiable>0</unmodifiable>
-        <values>action=Action|doc.reference=Document|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.headers|request.parameters=Request parameters|request.remoteAddr|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
+        <values>action=Action|doc.reference=Document|doc.revision|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.headers|request.parameters=Request parameters|request.remoteAddr|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
         <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
       </async_context>
       <async_enabled>

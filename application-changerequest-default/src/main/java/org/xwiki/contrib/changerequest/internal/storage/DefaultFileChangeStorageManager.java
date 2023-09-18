@@ -210,12 +210,14 @@ public class DefaultFileChangeStorageManager implements FileChangeStorageManager
 
                 DocumentAuthors authors = fileChangeDocument.getAuthors();
                 authors.setOriginalMetadataAuthor(fileChange.getAuthor());
+                // Use same creator as the CR creator to have some right consistency.
+                authors.setCreator(fileChange.getChangeRequest().getCreator());
 
                 if (fileChange.getModifiedDocument() != null) {
                     this.createAttachment(fileChange, fileChangeDocument, filename);
                 }
                 fileChangeDocument.setContentDirty(true);
-                wiki.saveDocument(fileChangeDocument, context);
+                wiki.saveDocument(fileChangeDocument, "Creation of the filechange", context);
                 fileChange.setSaved(true);
                 this.observationManager.notify(new FileChangeDocumentSavedEvent(), fileChange, fileChangeDocument);
             } catch (XWikiException | IOException e) {
@@ -546,8 +548,18 @@ public class DefaultFileChangeStorageManager implements FileChangeStorageManager
         XWiki wiki = context.getWiki();
         XWikiDocument modifiedDoc = ((XWikiDocument) fileChange.getModifiedDocument()).clone();
 
-        // the creator of the document should be the merge user.
-        modifiedDoc.setCreatorReference(context.getUserReference());
+        // the different authors, except the original metadata author, should be the merge user.
+        DocumentAuthors authors = modifiedDoc.getAuthors();
+        UserReference currentUser = this.currentUserReferenceResolver.resolve(CurrentUserReference.INSTANCE);
+        authors.setCreator(currentUser);
+        authors.setEffectiveMetadataAuthor(currentUser);
+        authors.setContentAuthor(currentUser);
+
+        // we set the date corresponding to the actual merge date.
+        Date now = new Date();
+        modifiedDoc.setContentUpdateDate(now);
+        modifiedDoc.setCreationDate(now);
+        modifiedDoc.setDate(now);
         // When merging a document that does not exist yet, we need to ensure to reset its version to 1.1
         modifiedDoc.setRCSVersion(null);
         try {

@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.xwiki.component.annotation.Role;
 import org.xwiki.contrib.changerequest.ChangeRequest;
@@ -222,12 +223,41 @@ public interface ChangeRequestStorageManager
     }
 
     /**
+     * Allow to split a change request and to ignore in purpose some changes of that change request: this allows to
+     * remove on purpose changes related to a document from a change request.
+     *
+     * @param changeRequest the change request to split
+     * @param changesToIgnore the list of references of changes that should be ignored during the split: be aware
+     *                        that it means those changes will be lost
+     * @return a list of change requests created by the split
+     * @throws ChangeRequestException in case of problem during the splitting.
+     * @see #split(ChangeRequest)
+     * @since 1.11
+     */
+    default List<ChangeRequest> split(ChangeRequest changeRequest, Set<DocumentReference> changesToIgnore)
+        throws ChangeRequestException
+    {
+        return split(changeRequest);
+    }
+
+    /**
      * Save the stale date of the change request. This method does not save any other information of the change request.
      * @param changeRequest the change request for which to save the stale date.
      * @throws ChangeRequestException in case of problem during the save.
      * @since 0.10
      */
     default void saveStaleDate(ChangeRequest changeRequest) throws ChangeRequestException
+    {
+    }
+
+    /**
+     * Delete the given change request and all related information including filechanges and discussions.
+     *
+     * @param changeRequest the change request to be deleted
+     * @throws ChangeRequestException in case of problem during the deletion
+     * @since 1.11
+     */
+    default void delete(ChangeRequest changeRequest) throws ChangeRequestException
     {
     }
 }

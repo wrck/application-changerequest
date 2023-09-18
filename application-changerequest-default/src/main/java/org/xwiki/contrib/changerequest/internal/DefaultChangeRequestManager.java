@@ -21,6 +21,7 @@ package org.xwiki.contrib.changerequest.internal;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import javax.inject.Inject;
 import javax.inject.Named;
@@ -210,9 +211,12 @@ public class DefaultChangeRequestManager implements ChangeRequestManager, Initia
         if (optionalLatestReview.isPresent()) {
             ChangeRequestReview previousReview = optionalLatestReview.get();
             previousReview.setLastFromAuthor(false);
-            previousReview.setValid(false);
-            previousReview.setSaved(false);
-            this.reviewStorageManager.save(previousReview);
+            // if the review is already invalidated, we don't need to do anything.
+            if (previousReview.isValid()) {
+                previousReview.setValid(false);
+                previousReview.setSaved(false);
+                this.reviewStorageManager.save(previousReview);
+            }
         }
         changeRequest.addReview(review);
         this.observationManager.notify(new ChangeRequestReviewAddedEvent(), changeRequest.getId(), review);
@@ -342,5 +346,18 @@ public class DefaultChangeRequestManager implements ChangeRequestManager, Initia
     public String getTitle(String changeRequestId, String fileChangeId)
     {
         return this.titleCacheManager.getTitle(changeRequestId, fileChangeId);
+    }
+
+    @Override
+    public void eraseChangesFor(DocumentReference documentReference) throws ChangeRequestException
+    {
+        for (ChangeRequest changeRequest : this.changeRequestStorageManager.
+            findChangeRequestTargeting(documentReference)) {
+            if (changeRequest.getModifiedDocuments().size() == 1) {
+                this.changeRequestStorageManager.delete(changeRequest);
+            } else {
+                this.changeRequestStorageManager.split(changeRequest, Set.of(documentReference));
+            }
+        }
     }
 }

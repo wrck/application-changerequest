@@ -152,7 +152,7 @@ class ChangeRequestCreationIT
         TimelineEvent timelineEvent = events.get(0);
         assertTrue(timelineEvent.getDate().after(dateBeforeCR));
         assertTrue(timelineEvent.getDate().before(dateAfterCR));
-        assertEquals("CRCreator created the Change Request with changes concerning A new title",
+        assertEquals("CRCreator created this Change Request with changes for A new title",
             timelineEvent.getContent().getText());
 
         // Update the description and check related event
@@ -212,7 +212,7 @@ class ChangeRequestCreationIT
         assertFalse(strategyCheck.isReady());
         assertFalse(strategyCheck.isOpened());
         strategyCheck.togglePanel();
-        assertEquals("The change request cannot be merged without valid approval or "
+        assertEquals("The change request cannot be published without valid approval or "
             + "if at least one review request for changes.", strategyCheck.getBody().getText());
 
         String pageURL = changeRequestPage.getPageURL();
@@ -423,7 +423,7 @@ class ChangeRequestCreationIT
         timelineEvent = events.get(9);
         assertTrue(timelineEvent.getDate().after(dateAfterStatusChange4));
         assertTrue(timelineEvent.getDate().before(dateAfterReview));
-        assertEquals("Approver changed the status of the Change Request from ready for review to ready for merging",
+        assertEquals("Approver changed the status of the Change Request from ready for review to ready for publication",
             timelineEvent.getContent().getText());
 
         // Since we have an approval review, checks should be all good and CR should be ready to be merged
@@ -510,13 +510,13 @@ class ChangeRequestCreationIT
         timelineEvent = events.get(10);
         assertTrue(timelineEvent.getDate().after(dateAfterReview));
         assertTrue(timelineEvent.getDate().before(dateAfterReview2));
-        assertEquals("Approver added a new review requesting for changes",
+        assertEquals("Approver added a new review requesting changes",
             timelineEvent.getContent().getText());
 
         timelineEvent = events.get(11);
         assertTrue(timelineEvent.getDate().after(dateAfterReview));
         assertTrue(timelineEvent.getDate().before(dateAfterReview2));
-        assertEquals("Approver changed the status of the Change Request from ready for merging to ready for review",
+        assertEquals("Approver changed the status of the Change Request from ready for publication to ready for review",
             timelineEvent.getContent().getText());
     }
 }

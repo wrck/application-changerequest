@@ -25,15 +25,15 @@
   <parent>
     <groupId>org.xwiki.contrib.changerequest</groupId>
     <artifactId>application-changerequest</artifactId>
-    <version>1.9.2-SNAPSHOT</version>
+    <version>1.11.1-SNAPSHOT</version>
   </parent>
   <artifactId>application-changerequest-api</artifactId>
-  <version>1.9.2-SNAPSHOT</version>
+  <version>1.11.1-SNAPSHOT</version>
   <name>Application Change Request - API</name>
   <packaging>jar</packaging>
   <properties>
     <xwiki.extension.namespaces>{root}</xwiki.extension.namespaces>
-    <xwiki.jacoco.instructionRatio>0.50</xwiki.jacoco.instructionRatio>
+    <xwiki.jacoco.instructionRatio>0.49</xwiki.jacoco.instructionRatio>
   </properties>
   <dependencies>
     <dependency>

@@ -25,10 +25,10 @@
   <parent>
     <groupId>org.xwiki.contrib.changerequest</groupId>
     <artifactId>application-changerequest</artifactId>
-    <version>1.9.2-SNAPSHOT</version>
+    <version>1.11.1-SNAPSHOT</version>
   </parent>
   <artifactId>application-changerequest-discussions</artifactId>
-  <version>1.9.2-SNAPSHOT</version>
+  <version>1.11.1-SNAPSHOT</version>
   <name>Application Change Request - Discussions</name>
   <packaging>jar</packaging>
   <properties>
@@ -78,6 +78,11 @@
       <groupId>org.xwiki.commons</groupId>
       <artifactId>xwiki-commons-tool-test-component</artifactId>
       <version>${commons.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
