@@ -19,8 +19,6 @@
  */
 package org.xwiki.contrib.changerequest.internal;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.Optional;
 
@@ -38,8 +36,8 @@ import org.xwiki.contrib.changerequest.FileChange;
 import org.xwiki.contrib.changerequest.internal.cache.MergeCacheManager;
 import org.xwiki.contrib.changerequest.storage.ChangeRequestStorageManager;
 import org.xwiki.contrib.changerequest.storage.FileChangeStorageManager;
-import org.xwiki.diff.Conflict;
-import org.xwiki.diff.ConflictDecision;
+import org.xwiki.localization.ContextualLocalizationManager;
+import org.xwiki.model.document.DocumentAuthors;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.store.merge.MergeConflictDecisionsManager;
 import org.xwiki.store.merge.MergeDocumentResult;
@@ -104,6 +102,9 @@ class DefaultChangeRequestMergeManagerTest
     @MockComponent
     private ChangeRequestStorageManager changeRequestStorageManager;
 
+    @MockComponent
+    private ContextualLocalizationManager contextualLocalizationManager;
+
     private XWikiContext context;
     private ChangeRequestManager changeRequestManager;
 
@@ -164,6 +165,8 @@ class DefaultChangeRequestMergeManagerTest
     void getMergeDocumentResult() throws Exception
     {
         FileChange fileChange = mock(FileChange.class);
+        UserReference authorRef = mock(UserReference.class, "author");
+        when(fileChange.getAuthor()).thenReturn(authorRef);
         when(fileChange.getType()).thenReturn(FileChange.FileChangeType.DELETION);
         XWikiDocument currentDoc = mock(XWikiDocument.class);
         when(this.fileChangeStorageManager.getCurrentDocumentFromFileChange(fileChange)).thenReturn(currentDoc);
@@ -178,11 +181,13 @@ class DefaultChangeRequestMergeManagerTest
             .thenReturn(Optional.of(previousDoc));
         when(previousDoc.getVersion()).thenReturn("1.1");
         when(previousDoc.getDate()).thenReturn(new Date(45));
+
         MergeDocumentResult mergeDocumentResult = new MergeDocumentResult(currentDoc, previousDoc, null);
         ChangeRequestMergeDocumentResult expectedResult =
             new ChangeRequestMergeDocumentResult(mergeDocumentResult, false, fileChange, "1.1", new Date(45))
                 .setDocumentTitle("Some title");
         assertEquals(expectedResult, this.crMergeManager.getMergeDocumentResult(fileChange));
+
 
         when(currentDoc.getVersion()).thenReturn("1.1");
         when(currentDoc.isNew()).thenReturn(true);
@@ -214,6 +219,11 @@ class DefaultChangeRequestMergeManagerTest
         when(fileChange.getTargetEntity()).thenReturn(targetEntity);
 
         MergeDocumentResult mergeDocumentResult2 = mock(MergeDocumentResult.class);
+        XWikiDocument mergeResult = mock(XWikiDocument.class, "mergeResult");
+        when(mergeDocumentResult2.getMergeResult()).thenReturn(mergeResult);
+        DocumentAuthors documentAuthors = mock(DocumentAuthors.class);
+        when(mergeResult.getAuthors()).thenReturn(documentAuthors);
+
         when(mergeManager.mergeDocument(eq(previousDoc), eq(nextDoc), eq(currentDoc), any()))
             .thenAnswer(invocationOnMock -> {
                 MergeConfiguration mergeConfiguration = invocationOnMock.getArgument(3);
@@ -227,6 +237,7 @@ class DefaultChangeRequestMergeManagerTest
         expectedResult = new ChangeRequestMergeDocumentResult(mergeDocumentResult2, fileChange, "1.1", new Date(45))
             .setDocumentTitle("Some other title");
         assertEquals(expectedResult, this.crMergeManager.getMergeDocumentResult(fileChange));
+        verify(documentAuthors).setOriginalMetadataAuthor(authorRef);
     }
 
     @Test
@@ -283,12 +294,15 @@ class DefaultChangeRequestMergeManagerTest
         when(changeRequest.addFileChange(any())).then(invocationOnMock -> {
             FileChange obtainedFileChange = invocationOnMock.getArgument(0);
             expectedFileChange.setCreationDate(obtainedFileChange.getCreationDate());
-            return null;
+            return changeRequest;
         });
+        when(this.contextualLocalizationManager.getTranslationPlain("changerequest.save.fixconflict"))
+            .thenReturn("Fix conflict");
 
         assertTrue(this.crMergeManager.mergeWithConflictDecision(fileChange, resolutionChoice, null));
         verify(changeRequest).addFileChange(expectedFileChange);
-        verify(this.changeRequestStorageManager).save(changeRequest);
+        verify(this.changeRequestStorageManager).save(changeRequest, "Fix conflict");
         verify(this.changeRequestManager).computeReadyForMergingStatus(changeRequest);
+        verify(changeRequest).updateDate();
     }
 }

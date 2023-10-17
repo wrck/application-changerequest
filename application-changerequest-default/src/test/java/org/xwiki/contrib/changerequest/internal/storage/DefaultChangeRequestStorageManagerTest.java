@@ -53,12 +53,12 @@ import org.xwiki.contrib.changerequest.storage.ReviewStorageManager;
 import org.xwiki.job.Job;
 import org.xwiki.job.JobException;
 import org.xwiki.job.JobExecutor;
+import org.xwiki.localization.ContextualLocalizationManager;
 import org.xwiki.model.document.DocumentAuthors;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
 import org.xwiki.model.reference.EntityReferenceSerializer;
 import org.xwiki.model.reference.SpaceReference;
-import org.xwiki.model.reference.WikiReference;
 import org.xwiki.observation.ObservationManager;
 import org.xwiki.query.Query;
 import org.xwiki.query.QueryException;
@@ -163,6 +163,9 @@ class DefaultChangeRequestStorageManagerTest
     private ObservationManager observationManager;
 
     @MockComponent
+    private ContextualLocalizationManager contextualLocalizationManager;
+
+    @MockComponent
     @Named("count")
     private QueryFilter countQueryFilter;
 
@@ -213,6 +216,10 @@ class DefaultChangeRequestStorageManagerTest
             .thenReturn(xobject);
         // First call when checking if the ID should be set, second call to invalidate the cache.
         when(changeRequest.getId()).thenReturn(null).thenReturn("id42");
+        when(document.isMetaDataDirty()).thenReturn(true);
+        when(this.contextualLocalizationManager.getTranslationPlain("changerequest.save.creation"))
+            .thenReturn("Creation of change request");
+
         this.storageManager.save(changeRequest);
         verify(changeRequest).setId("id42");
         verify(document).setTitle(title);
@@ -283,6 +290,7 @@ class DefaultChangeRequestStorageManagerTest
 
         when(xobject.getStringValue("status")).thenReturn("merged");
         when(document.getCreationDate()).thenReturn(new Date(42));
+        when(document.getDate()).thenReturn(new Date(85));
 
         changeRequest.addFileChange(fileChange1)
             .addFileChange(fileChange2)
@@ -292,7 +300,8 @@ class DefaultChangeRequestStorageManagerTest
             .setCreator(userReference)
             .setTitle(title)
             .setDescription(description)
-            .setCreationDate(new Date(42));
+            .setCreationDate(new Date(42))
+            .setUpdateDate(new Date(85));
         assertEquals(Optional.of(changeRequest), this.storageManager.load(id));
         verify(this.changeRequestStorageCacheManager, times(3)).getChangeRequest(id);
     }
@@ -358,13 +367,16 @@ class DefaultChangeRequestStorageManagerTest
 
         when(xobject.getStringValue("status")).thenReturn("merged");
         when(doc2.getCreationDate()).thenReturn(new Date(42));
+        when(doc2.getDate()).thenReturn(new Date(43));
+
         ChangeRequest cr2 = new ChangeRequest();
         cr2.setId("Space2")
             .setStatus(ChangeRequestStatus.MERGED)
             .setCreator(userReference)
             .setTitle(title)
             .setDescription(description)
-            .setCreationDate(new Date(42));
+            .setCreationDate(new Date(42))
+            .setUpdateDate(new Date(43));
 
         // ref3
         XWikiDocument doc3 = mock(XWikiDocument.class);
@@ -383,13 +395,16 @@ class DefaultChangeRequestStorageManagerTest
 
         when(xobject2.getStringValue("status")).thenReturn("draft");
         when(doc3.getCreationDate()).thenReturn(new Date(16));
+        when(doc3.getDate()).thenReturn(new Date(17));
+
         ChangeRequest cr3 = new ChangeRequest();
         cr3.setId("Space3")
             .setStatus(ChangeRequestStatus.DRAFT)
             .setCreator(userReference2)
             .setTitle(title2)
             .setDescription(description2)
-            .setCreationDate(new Date(16));
+            .setCreationDate(new Date(16))
+            .setUpdateDate(new Date(17));
 
         assertEquals(Arrays.asList(cr2, cr3), this.storageManager.findChangeRequestTargeting(targetReference));
         verify(query).bindValue("reference", "Foo.MyPage");
@@ -456,13 +471,16 @@ class DefaultChangeRequestStorageManagerTest
 
         when(xobject.getStringValue("status")).thenReturn("merged");
         when(doc2.getCreationDate()).thenReturn(new Date(42));
+        when(doc2.getDate()).thenReturn(new Date(34));
+
         ChangeRequest cr2 = new ChangeRequest();
         cr2.setId("Space2")
             .setStatus(ChangeRequestStatus.MERGED)
             .setCreator(userReference)
             .setTitle(title)
             .setDescription(description)
-            .setCreationDate(new Date(42));
+            .setCreationDate(new Date(42))
+            .setUpdateDate(new Date(34));
 
         // ref3
         XWikiDocument doc3 = mock(XWikiDocument.class);
@@ -481,13 +499,16 @@ class DefaultChangeRequestStorageManagerTest
 
         when(xobject2.getStringValue("status")).thenReturn("draft");
         when(doc3.getCreationDate()).thenReturn(new Date(16));
+        when(doc3.getDate()).thenReturn(new Date(18));
+
         ChangeRequest cr3 = new ChangeRequest();
         cr3.setId("Space3")
             .setStatus(ChangeRequestStatus.DRAFT)
             .setCreator(userReference2)
             .setTitle(title2)
             .setDescription(description2)
-            .setCreationDate(new Date(16));
+            .setCreationDate(new Date(16))
+            .setUpdateDate(new Date(18));
 
         assertEquals(Arrays.asList(cr2, cr3), this.storageManager.findChangeRequestTargeting(targetReference));
         verify(query).bindValue("reference", "%Foo.MySpace%");
@@ -513,6 +534,7 @@ class DefaultChangeRequestStorageManagerTest
             .thenReturn(baseObject);
         Date date = new Date(845);
         when(changeRequest.getStaleDate()).thenReturn(date);
+        when(document.isMetaDataDirty()).thenReturn(true);
         this.storageManager.saveStaleDate(changeRequest);
         verify(baseObject).set(ChangeRequestXClassInitializer.STALE_DATE_FIELD, date, this.context);
         verify(wiki).saveDocument(document, "Save of stale date", this.context);
@@ -810,6 +832,12 @@ class DefaultChangeRequestStorageManagerTest
         Job deletionJob = mock(Job.class);
         when(this.jobExecutor.execute(RefactoringJobs.DELETE, deleteRequest)).thenReturn(deletionJob);
 
+        when(cr1Doc.isMetaDataDirty()).thenReturn(true);
+        when(cr2Doc.isMetaDataDirty()).thenReturn(true);
+        when(cr3Doc.isMetaDataDirty()).thenReturn(true);
+        when(this.contextualLocalizationManager.getTranslationPlain("changerequest.save.split"))
+            .thenReturn("Creation by splitting");
+
         assertEquals(List.of(changeRequest1, changeRequest2, changeRequest3, changeRequest4),
             this.storageManager.split(changeRequest));
 
@@ -829,9 +857,9 @@ class DefaultChangeRequestStorageManagerTest
 
         // verify save of CR (we only check the save of the document and the save of the file changes,
         // we could check all properties to be exhaustive)
-        verify(this.wiki).saveDocument(cr1Doc, "Creation of change request", this.context);
-        verify(this.wiki).saveDocument(cr2Doc, "Creation of change request", this.context);
-        verify(this.wiki).saveDocument(cr3Doc, "Creation of change request", this.context);
+        verify(this.wiki).saveDocument(cr1Doc, "Creation by splitting", this.context);
+        verify(this.wiki).saveDocument(cr2Doc, "Creation by splitting", this.context);
+        verify(this.wiki).saveDocument(cr3Doc, "Creation by splitting", this.context);
 
         verify(this.fileChangeStorageManager).save(fileChange1Doc1Clone);
         verify(this.fileChangeStorageManager).save(fileChange2Doc1Clone);
@@ -1154,6 +1182,11 @@ class DefaultChangeRequestStorageManagerTest
         Job deletionJob = mock(Job.class);
         when(this.jobExecutor.execute(RefactoringJobs.DELETE, deleteRequest)).thenReturn(deletionJob);
 
+        when(cr1Doc.isMetaDataDirty()).thenReturn(true);
+        when(cr3Doc.isMetaDataDirty()).thenReturn(true);
+        when(this.contextualLocalizationManager.getTranslationPlain("changerequest.save.split"))
+            .thenReturn("Creation by splitting");
+
         assertEquals(List.of(changeRequest1, changeRequest3, changeRequest4),
             this.storageManager.split(changeRequest, Set.of(doc2)));
 
@@ -1173,8 +1206,9 @@ class DefaultChangeRequestStorageManagerTest
 
         // verify save of CR (we only check the save of the document and the save of the file changes,
         // we could check all properties to be exhaustive)
-        verify(this.wiki).saveDocument(cr1Doc, "Creation of change request", this.context);
-        verify(this.wiki).saveDocument(cr3Doc, "Creation of change request", this.context);
+
+        verify(this.wiki).saveDocument(cr1Doc, "Creation by splitting", this.context);
+        verify(this.wiki).saveDocument(cr3Doc, "Creation by splitting", this.context);
 
         verify(this.fileChangeStorageManager).save(fileChange1Doc1Clone);
         verify(this.fileChangeStorageManager).save(fileChange2Doc1Clone);

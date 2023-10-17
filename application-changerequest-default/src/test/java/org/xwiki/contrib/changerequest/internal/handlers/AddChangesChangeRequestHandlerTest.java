@@ -39,6 +39,7 @@ import org.xwiki.contrib.changerequest.FileChange;
 import org.xwiki.contrib.changerequest.events.ChangeRequestFileChangeAddedEvent;
 import org.xwiki.contrib.changerequest.internal.FileChangeVersionManager;
 import org.xwiki.contrib.changerequest.storage.ChangeRequestStorageManager;
+import org.xwiki.localization.ContextualLocalizationManager;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
 import org.xwiki.observation.ObservationManager;
@@ -121,6 +122,9 @@ class AddChangesChangeRequestHandlerTest
     @MockComponent
     private ChangeRequestMergeManager changeRequestMergeManager;
 
+    @MockComponent
+    private ContextualLocalizationManager contextualLocalizationManager;
+
     private XWikiContext context;
     private XWiki wiki;
     private XWikiVersioningStoreInterface versioningStore;
@@ -181,13 +185,16 @@ class AddChangesChangeRequestHandlerTest
         when(changeRequest.addFileChange(any())).then(invocationOnMock -> {
             FileChange fileChange = invocationOnMock.getArgument(0);
             expectedFileChange.setCreationDate(fileChange.getCreationDate());
-            return null;
+            return changeRequest;
         });
         when(this.changeRequestRightsManager.isViewAccessConsistent(changeRequest, documentReference)).thenReturn(true);
         DocumentReference changeRequestDocReference = mock(DocumentReference.class);
         when(this.changeRequestDocumentReferenceResolver.resolve(changeRequest)).thenReturn(changeRequestDocReference);
         String url = "some url";
         when(wiki.getURL(changeRequestDocReference, "view", context)).thenReturn(url);
+
+        when(this.contextualLocalizationManager.getTranslationPlain("changerequest.save.newchange"))
+            .thenReturn("Add new change");
 
         when(this.changeRequestRightsManager.isEditWithChangeRequestAllowed(userReference, documentReference))
             .thenReturn(true);
@@ -196,7 +203,7 @@ class AddChangesChangeRequestHandlerTest
         verify(document).clone();
         verify(document).readFromForm(any(EditForm.class), eq(context));
         verify(changeRequest).addFileChange(expectedFileChange);
-        verify(this.storageManager).save(changeRequest);
+        verify(this.storageManager).save(changeRequest, "Add new change");
         verify(this.changeRequestApproversManager).getAllApprovers(changeRequest, false);
         verify(this.fileChangeApproversManager).getAllApprovers(expectedFileChange, false);
         verify(this.changeRequestApproversManager).getGroupsApprovers(changeRequest);
@@ -204,6 +211,7 @@ class AddChangesChangeRequestHandlerTest
         verify(this.observationManager)
             .notify(any(ChangeRequestFileChangeAddedEvent.class), eq(changeRequestId), eq(expectedFileChange));
         verify(response).sendRedirect(url);
+        verify(changeRequest).updateDate();
     }
 
     @Test
@@ -238,6 +246,9 @@ class AddChangesChangeRequestHandlerTest
         when(documentArchive.loadDocument(new Version("2.1"), context)).thenReturn(previousVersionDoc);
         when(previousVersionDoc.getDate()).thenReturn(new Date(478));
 
+        when(this.contextualLocalizationManager.getTranslationPlain("changerequest.save.newchange"))
+            .thenReturn("Add new change");
+
         FileChange existingFileChange = mock(FileChange.class);
         when(changeRequest.getLatestFileChangeFor(documentReference)).thenReturn(Optional.of(existingFileChange));
         when(existingFileChange.getPreviousPublishedVersion()).thenReturn("1.1");
@@ -260,7 +271,7 @@ class AddChangesChangeRequestHandlerTest
         when(changeRequest.addFileChange(any())).then(invocationOnMock -> {
             FileChange fileChange = invocationOnMock.getArgument(0);
             expectedFileChange.setCreationDate(fileChange.getCreationDate());
-            return null;
+            return changeRequest;
         });
         DocumentReference changeRequestDocReference = mock(DocumentReference.class);
         when(this.changeRequestDocumentReferenceResolver.resolve(changeRequest)).thenReturn(changeRequestDocReference);
@@ -282,7 +293,7 @@ class AddChangesChangeRequestHandlerTest
         verify(document).clone();
         verify(document).readFromForm(any(EditForm.class), eq(context));
         verify(changeRequest).addFileChange(expectedFileChange);
-        verify(this.storageManager).save(changeRequest);
+        verify(this.storageManager).save(changeRequest, "Add new change");
         verify(this.changeRequestApproversManager).getAllApprovers(changeRequest, false);
         verify(this.fileChangeApproversManager).getAllApprovers(expectedFileChange, false);
         verify(this.changeRequestApproversManager).getGroupsApprovers(changeRequest);
@@ -290,5 +301,6 @@ class AddChangesChangeRequestHandlerTest
         verify(this.observationManager)
             .notify(any(ChangeRequestFileChangeAddedEvent.class), eq(changeRequestId), eq(expectedFileChange));
         verify(response).sendRedirect(url);
+        verify(changeRequest).updateDate();
     }
 }

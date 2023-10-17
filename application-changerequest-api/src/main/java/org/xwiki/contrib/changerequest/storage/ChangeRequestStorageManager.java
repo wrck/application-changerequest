@@ -45,8 +45,22 @@ public interface ChangeRequestStorageManager
      * Save the given change request and all the related {@link org.xwiki.contrib.changerequest.FileChange}.
      * @param changeRequest the change request to save.
      * @throws ChangeRequestException in case of problem during the save.
+     * @deprecated Since 1.12 prefer using {@link #save(ChangeRequest, String)}.
      */
-    void save(ChangeRequest changeRequest) throws ChangeRequestException;
+    @Deprecated(since = "1.12")
+    default void save(ChangeRequest changeRequest) throws ChangeRequestException
+    {
+        save(changeRequest, "");
+    }
+
+    /**
+     * Save the given change request and all the related {@link org.xwiki.contrib.changerequest.FileChange}.
+     * @param changeRequest the change request to save.
+     * @param saveComment the comment to use for saving the change request document.
+     * @throws ChangeRequestException in case of problem during the save.
+     * @since 1.12
+     */
+    void save(ChangeRequest changeRequest, String saveComment) throws ChangeRequestException;
 
     /**
      * Load a change request based on the given identifier.

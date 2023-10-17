@@ -67,6 +67,7 @@ import org.xwiki.contrib.changerequest.storage.ReviewStorageManager;
 import org.xwiki.job.Job;
 import org.xwiki.job.JobException;
 import org.xwiki.job.JobExecutor;
+import org.xwiki.localization.ContextualLocalizationManager;
 import org.xwiki.model.document.DocumentAuthors;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
@@ -89,6 +90,8 @@ import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.objects.BaseObject;
+import com.xpn.xwiki.objects.classes.PageClass;
+import com.xpn.xwiki.objects.classes.UsersClass;
 
 import static org.xwiki.contrib.changerequest.internal.storage.ChangeRequestXClassInitializer.AUTHORS_FIELD;
 import static org.xwiki.contrib.changerequest.internal.storage.ChangeRequestXClassInitializer.CHANGED_DOCUMENTS_FIELD;
@@ -181,6 +184,9 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
     private ComponentManager componentManager;
 
     @Inject
+    private ContextualLocalizationManager contextualLocalizationManager;
+
+    @Inject
     private Logger logger;
 
     private ChangeRequestIDGenerator getIdGenerator()
@@ -205,7 +211,7 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
     }
 
     @Override
-    public void save(ChangeRequest changeRequest) throws ChangeRequestException
+    public void save(ChangeRequest changeRequest, String comment) throws ChangeRequestException
     {
         XWikiContext context = this.contextProvider.get();
         XWiki wiki = context.getWiki();
@@ -215,38 +221,67 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
         DocumentReference reference = this.changeRequestDocumentReferenceResolver.resolve(changeRequest);
         try {
             XWikiDocument document = wiki.getDocument(reference, context);
-            document.setDefaultLocale(wiki.getLocalePreference(context));
-            document.setTitle(changeRequest.getTitle());
-            document.setContent(changeRequest.getDescription());
-            DocumentAuthors authors = document.getAuthors();
-            if (document.isNew()) {
-                authors.setCreator(changeRequest.getCreator());
-            }
-            authors.setOriginalMetadataAuthor(this.userReferenceResolver.resolve(context.getUserReference()));
-            BaseObject xObject = document.getXObject(CHANGE_REQUEST_XCLASS, 0, true, context);
-            xObject.set(STATUS_FIELD, changeRequest.getStatus().name().toLowerCase(Locale.ROOT), context);
-
-            List<String> serializedReferences = changeRequest.getModifiedDocuments().stream()
-                .map(target -> this.localEntityReferenceSerializer.serialize(target))
-                .collect(Collectors.toList());
-            xObject.set(CHANGED_DOCUMENTS_FIELD, serializedReferences, context);
-
-            List<String> serializedAuthors = changeRequest.getAuthors().stream()
-                .map(target -> this.userReferenceSerializer.serialize(target))
-                .collect(Collectors.toList());
-
-            xObject.set(AUTHORS_FIELD, serializedAuthors, context);
-            xObject.set(STALE_DATE_FIELD, null, context);
-
+            this.prepareChangeRequestDocument(changeRequest, document);
             for (FileChange fileChange : changeRequest.getAllFileChanges()) {
                 this.fileChangeStorageManager.save(fileChange);
             }
-            wiki.saveDocument(document, "Creation of change request", context);
+            // Only save the doc if the data actually changed.
+            String saveComment = this.contextualLocalizationManager.getTranslationPlain("changerequest.save.update");
+            if (document.isNew()) {
+                saveComment = this.contextualLocalizationManager.getTranslationPlain("changerequest.save.creation");
+                document.getAuthors().setCreator(changeRequest.getCreator());
+            }
+            if (!StringUtils.isBlank(comment)) {
+                saveComment = comment;
+            }
+            if (document.isMetaDataDirty()) {
+                wiki.saveDocument(document, saveComment, context);
+            }
         } catch (XWikiException e) {
             throw new ChangeRequestException(
                 String.format("Error while saving the change request [%s]", changeRequest), e);
         }
         this.changeRequestStorageCacheManager.invalidate(changeRequest.getId());
+    }
+
+    private void prepareChangeRequestDocument(ChangeRequest changeRequest, XWikiDocument document) throws XWikiException
+    {
+        XWikiContext context = contextProvider.get();
+        XWiki wiki = context.getWiki();
+        document.setDefaultLocale(wiki.getLocalePreference(context));
+        document.setTitle(changeRequest.getTitle());
+        document.setContent(changeRequest.getDescription());
+        document.setDate(changeRequest.getUpdateDate());
+        DocumentAuthors authors = document.getAuthors();
+
+        authors.setOriginalMetadataAuthor(this.userReferenceResolver.resolve(context.getUserReference()));
+        BaseObject xObject = document.getXObject(CHANGE_REQUEST_XCLASS, 0, true, context);
+
+        String newStatusValue = changeRequest.getStatus().name().toLowerCase(Locale.ROOT);
+
+        if (!StringUtils.equals(xObject.getStringValue(STATUS_FIELD), newStatusValue)) {
+            xObject.set(STATUS_FIELD, newStatusValue, context);
+        }
+
+        List<String> serializedDocuments = changeRequest.getModifiedDocuments().stream()
+            .map(target -> this.localEntityReferenceSerializer.serialize(target))
+            .collect(Collectors.toList());
+        String currentDocuments = xObject.getLargeStringValue(CHANGED_DOCUMENTS_FIELD);
+        if (!PageClass.getListFromString(currentDocuments).equals(serializedDocuments)) {
+            xObject.set(CHANGED_DOCUMENTS_FIELD, serializedDocuments, context);
+        }
+
+        List<String> serializedAuthors = changeRequest.getAuthors().stream()
+            .map(target -> this.userReferenceSerializer.serialize(target))
+            .collect(Collectors.toList());
+        String currentAuthors = xObject.getLargeStringValue(AUTHORS_FIELD);
+        if (!UsersClass.getListFromString(currentAuthors).equals(serializedAuthors)) {
+            xObject.set(AUTHORS_FIELD, serializedAuthors, context);
+        }
+
+        if (xObject.getDateValue(STALE_DATE_FIELD) != null) {
+            xObject.set(STALE_DATE_FIELD, null, context);
+        }
     }
 
     @Override
@@ -262,7 +297,11 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
                 XWikiDocument document = wiki.getDocument(reference, context);
                 BaseObject xObject = document.getXObject(CHANGE_REQUEST_XCLASS, 0, true, context);
                 xObject.set(STALE_DATE_FIELD, changeRequest.getStaleDate(), context);
-                wiki.saveDocument(document, "Save of stale date", context);
+
+                // Don't perform the save if the document hasn't changed.
+                if (document.isMetaDataDirty()) {
+                    wiki.saveDocument(document, "Save of stale date", context);
+                }
             } catch (XWikiException e) {
                 throw new ChangeRequestException("Error while saving the change request stale date", e);
             }
@@ -293,7 +332,8 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
                         .setCreator(document.getAuthors().getCreator())
                         .setStatus(status)
                         .setCreationDate(document.getCreationDate())
-                        .setStaleDate(staleDate);
+                        .setStaleDate(staleDate)
+                        .setUpdateDate(document.getDate());
                     List<String> changedDocuments = xObject.getListValue(CHANGED_DOCUMENTS_FIELD);
 
                     for (String changedDocument : changedDocuments) {
@@ -325,8 +365,11 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
         // We immediately save the merge status to avoid having the listeners to consider this change request
         // when computing status changes.
         ChangeRequestStatus oldStatus = changeRequest.getStatus();
-        changeRequest.setStatus(ChangeRequestStatus.MERGED);
-        this.save(changeRequest);
+        changeRequest
+            .setStatus(ChangeRequestStatus.MERGED)
+            .updateDate();
+        String saveComment = this.contextualLocalizationManager.getTranslationPlain("changerequest.save.merge");
+        this.save(changeRequest, saveComment);
         this.observationManager.notify(new ChangeRequestStatusChangedEvent(), changeRequest.getId(),
             new ChangeRequestStatus[] {oldStatus, ChangeRequestStatus.MERGED});
 
@@ -341,11 +384,16 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
             this.observationManager.notify(new ChangeRequestMergedEvent(), changeRequest.getId(), changeRequest);
         } catch (ChangeRequestException e) {
             // in case of error we reset the status
-            changeRequest.setStatus(oldStatus);
-            this.save(changeRequest);
+            changeRequest
+                .setStatus(oldStatus)
+                .updateDate();
+            saveComment = this.contextualLocalizationManager.getTranslationPlain("changerequest.save.rollbackMerge");
+            this.save(changeRequest, saveComment);
             this.observationManager.notify(new ChangeRequestStatusChangedEvent(), changeRequest.getId(),
                 new ChangeRequestStatus[] {ChangeRequestStatus.MERGED, oldStatus});
             this.observationManager.notify(new ChangeRequestMergeFailedEvent(), changeRequest.getId(), changeRequest);
+            this.logger.error("Merging of change request [{}] was prevented because of exception: ",
+                changeRequest.getId(), e);
         }
     }
 
@@ -587,7 +635,8 @@ public class DefaultChangeRequestStorageManager implements ChangeRequestStorageM
                     splittedChangeRequest.addFileChange(clonedFileChange);
                 }
 
-                this.save(splittedChangeRequest);
+                String saveComment = this.contextualLocalizationManager.getTranslationPlain("changerequest.save.split");
+                this.save(splittedChangeRequest, saveComment);
 
                 this.changeRequestRightsManager.copyAllButViewRights(changeRequest, splittedChangeRequest);
                 this.changeRequestRightsManager.copyViewRights(splittedChangeRequest, entry.getKey());

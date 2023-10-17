@@ -498,17 +498,20 @@
       &lt;/div&gt;&lt;!-- End otherCR panel body --&gt;
      &lt;/div&gt;&lt;!-- End otherCR panel --&gt;
       #end
-       #if ($changeRequest.status == "READY_FOR_REVIEW")
-         #set ($statusPanelClass = "panel-info")
+       #if ($changeRequest.status == 'READY_FOR_REVIEW')
+         #set ($statusPanelClass = 'panel-info')
          #set ($statusIcon = $checkIconSuccess)
-       #elseif ($changeRequest.status == "DRAFT")
-         #set ($statusPanelClass = "panel-warning")
+       #elseif ($changeRequest.status == 'DRAFT')
+         #set ($statusPanelClass = 'panel-warning')
          #set ($statusIcon = $checkIconProblem)
-       #elseif ($changeRequest.status == "READY_FOR_MERGING")
-         #set ($statusPanelClass = "panel-success")
+       #elseif ($changeRequest.status == 'READY_FOR_MERGING')
+         #set ($statusPanelClass = 'panel-success')
          #set ($statusIcon = $checkIconSuccess)
-       #elseif ($changeRequest.status == "CLOSED")
-         #set ($statusPanelClass = "panel-danger")
+       #elseif (!$changeRequest.status.open)
+         #set ($statusPanelClass = 'panel-danger')
+         #set ($statusIcon = $checkIconProblem)
+       #else
+         #set ($statusPanelClass = 'panel-default')
          #set ($statusIcon = $checkIconProblem)
        #end
        &lt;div class="panel check-panel-status $statusPanelClass"&gt;
@@ -522,12 +525,12 @@
         &lt;div id="statusPanel" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingStatusPanel"&gt;
           &lt;div class="panel-body"&gt;
             &lt;div class="explanation"&gt;
-            #if ($changeRequest.status == "READY_FOR_REVIEW" || $changeRequest.status == "READY_FOR_MERGING")
+            #if ($changeRequest.status == 'READY_FOR_REVIEW' || $changeRequest.status == 'READY_FOR_MERGING')
               $services.localization.render('changerequest.sheet.checks.status.ready.explanation')
-            #elseif ($changeRequest.status == "DRAFT")
-              &lt;div class="explanation"&gt;$services.localization.render('changerequest.sheet.checks.status.draft.explanation')
-            #elseif ($changeRequest.status == "CLOSED")
-              &lt;div class="explanation"&gt;$services.localization.render('changerequest.sheet.checks.status.closed.explanation')
+            #elseif ($changeRequest.status == 'DRAFT')
+              $services.localization.render('changerequest.sheet.checks.status.draft.explanation')
+            #elseif (!$changeRequest.status.open)
+              $services.localization.render('changerequest.sheet.checks.status.closed.explanation')
             #end
             &lt;/div&gt;
           &lt;/div&gt;
@@ -1789,7 +1792,7 @@ define('CommentEditor', ['jquery', 'xwiki-meta', 'ChangeRequestDiscussionHandler
       var data = form.serialize();
       $(document).trigger('xwiki:actions:cancel');
       $.post(url, data).done(function (data) {
-        notification.replace(new XWiki.widgets.Notification('Message submitted with success.','success'));
+        notification.replace(new XWiki.widgets.Notification('Message submitted with success.','done'));
         $(document).trigger('xwiki:changerequest:refreshTimeline');
         DiscussionHandler.retrieveMessage(data);
         self.editorDiv.remove();
@@ -2163,17 +2166,19 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
     var messageId = $(message).attr('data-reference');
     if (cssClass == 'review') {
       var discussionElement = $('.discussion.review[data-reference=' + otherId +']');
+    } else if (cssClass == 'difftab') {
+      var discussionElement = otherId;
     } else {
       var discussionElement = $('.discussion.'+cssClass+'[data-message-reference="'+messageId+'"]');
     }
     var diffBlock = $(message).parent('.discussion').find('.diff-block-metadata');
     if (discussionElement &amp;&amp; discussionElement.find('.message[data-reference="' + messageId+ '"]').length == 0) {
-      if (diffBlock.length &gt; 0) {
+      if (diffBlock.length &gt; 0 &amp;&amp; cssClass != 'difftab') {
         newBlock = diffBlock.clone();
         discussionElement.append(newBlock);
         newBlock.removeClass('hidden');
       }
-      discussionElement.append($(message));
+      discussionElement.append($(message).clone());
     }
   };
   
@@ -2288,18 +2293,23 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
   var placeLineDiffDiscussion = function (discussion) {
     var reference = discussion.attr('data-reference');
     var existingLine = $('.discussion-line[data-reference="'+reference+'"]');
+    var existingLineDiscussion;
     if (!existingLine.length) {
       insertLineDiffDiscussion(discussion);
+    } else {
+      existingLineDiscussion = existingLine.find('.discussion');
     }
     
-    discussion.clone().find('.message').each(function (index, message) {
+    discussion.find('.message').each(function (index, message) {
       placeMessage('diff', '', message);
+      if (existingLineDiscussion) {
+        placeMessage('difftab', existingLineDiscussion, message);
+      }
     });
   }
   
   var placeAllDiscussions = function () {
     $('#discussions .discussion').each(placeDiscussions);
-    $('#timeline-loading').addClass('hidden');
     $(document).trigger('xwiki:dom:updated', {'elements': $('#discussions .discussion').toArray()});
   };
   
@@ -2920,7 +2930,7 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
       <code>'use strict';
 require(['jquery', 'xwiki-meta', 'ChangeRequestDiscussionHandler', 'CommentEditor'], function ($, xm, DiscussionHandler, CommentEditor) {
   var initReply = function () {
-    $('.message .reply-button:visible').not('.reply-initialized').one('click', function (event) {
+    $('.message .reply-button').not('#discussions .reply-button').not('.reply-initialized').not('.reply-initialized').one('click', function (event) {
       var changeRequestId = $(this).parents('.cr-main-div').attr('data-changerequest-id');
       var message = $(this).parents('.message');
       var discussion = message.parents('.discussion');
@@ -2937,7 +2947,7 @@ require(['jquery', 'xwiki-meta', 'ChangeRequestDiscussionHandler', 'CommentEdito
       });
       editor.requestEditor(event.target);
     });
-    $('.message .reply-button:visible').not('.reply-initialized').addClass('reply-initialized');
+    $('.message .reply-button').not('#discussions .reply-button').not('.reply-initialized').addClass('reply-initialized');
   };
   
   var initialize = function () {
@@ -3166,7 +3176,6 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
   var changeRequestId = $('.cr-main-div').attr('data-changerequest-id');
   
   var refreshTimeline = function() {
-    $('#timeline-loading').removeClass('hidden');
     var data = {
       form_token: xm.form_token,
       changerequest: changeRequestId,
@@ -3178,13 +3187,16 @@ require(['jquery', 'xwiki-meta'], function ($, xm) {
       timelineHolder.append(data);
       $(document).trigger('xwiki:changerequest:refreshComments');
       $(document).trigger('xwiki:dom:updated', {'elements': timelineHolder.toArray()});
+      $('#timeline-loading').addClass('hidden');
     }).fail(function (data) {
        console.error("Error while trying to refresh the timeline: " + data);
        console.log(data);
+       $('#timeline-loading').addClass('hidden');
     });
   }
   
   $(document).on('xwiki:changerequest:refreshTimeline', function () {
+    $('#timeline-loading').removeClass('hidden');
     setTimeout(refreshTimeline, 1000);
   });
 });</code>
@@ -4143,13 +4155,18 @@ define('DiffSnippet', ['jquery', 'xwiki-meta'], function ($, xm) {
     </property>
     <property>
       <code>require(['jquery'], function ($) {
+
+  var initializeAllDetailsSwitch = function() {
+    initializeDiffReferenceDetailsSwitch();
+    $(document).on('xwiki:dom:updated', initializeDiffReferenceDetailsSwitch);
+  };
   var initializeDiffReferenceDetailsSwitch = function() {
-    $('.diff-reference-details-switch').on('click', function () {
+    $('.diff-reference-details-switch').not('#discussions .diff-reference-details-switch').not('.augmented-switch').on('click', function () {
       $(this).siblings('.diff-reference-details').toggleClass('hidden');
     });
+    $('.diff-reference-details-switch').not('#discussions .diff-reference-details-switch').addClass('augmented-switch');
   };
-  
-  $(document).on('xwiki:dom:updated', initializeDiffReferenceDetailsSwitch);
+  (XWiki.isInitialized &amp;&amp; initializeAllDetailsSwitch()) || $(document).on('xwiki:dom:loaded', initializeAllDetailsSwitch);
 });</code>
     </property>
     <property>

@@ -53,6 +53,7 @@ import org.xwiki.contrib.changerequest.storage.ChangeRequestStorageManager;
 import org.xwiki.contrib.changerequest.storage.FileChangeStorageManager;
 import org.xwiki.diff.Conflict;
 import org.xwiki.diff.ConflictDecision;
+import org.xwiki.localization.ContextualLocalizationManager;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.observation.ObservationManager;
 import org.xwiki.store.merge.MergeConflictDecisionsManager;
@@ -108,6 +109,9 @@ public class DefaultChangeRequestMergeManager implements ChangeRequestMergeManag
 
     @Inject
     private MergeCacheManager mergeCacheManager;
+
+    @Inject
+    private ContextualLocalizationManager contextualLocalizationManager;
 
     @Inject
     private Logger logger;
@@ -303,6 +307,11 @@ public class DefaultChangeRequestMergeManager implements ChangeRequestMergeManag
         mergeConfiguration.setProvidedVersionsModifiables(false);
         MergeDocumentResult mergeDocumentResult =
             mergeManager.mergeDocument(previousDoc, nextDoc, xwikiCurrentDoc, mergeConfiguration);
+        // We never want to merge the author so let's display an accurate author in diff
+        mergeDocumentResult
+            .getMergeResult()
+            .getAuthors()
+            .setOriginalMetadataAuthor(fileChange.getAuthor());
         ChangeRequestMergeDocumentResult result = new ChangeRequestMergeDocumentResult(mergeDocumentResult,
             fileChange,
             previousDoc.getVersion(),
@@ -313,6 +322,11 @@ public class DefaultChangeRequestMergeManager implements ChangeRequestMergeManag
             mergeConfiguration.setConflictFallbackVersion(MergeConfiguration.ConflictFallbackVersion.NEXT);
             MergeDocumentResult mergeDocumentResultWithCRFallback =
                 mergeManager.mergeDocument(previousDoc, nextDoc, xwikiCurrentDoc, mergeConfiguration);
+            // We never want to merge the author so let's display an accurate author in diff
+            mergeDocumentResultWithCRFallback
+                .getMergeResult()
+                .getAuthors()
+                .setOriginalMetadataAuthor(fileChange.getAuthor());
             result.setWrappedResultWithCRFallback(mergeDocumentResultWithCRFallback);
         }
 
@@ -507,8 +521,11 @@ public class DefaultChangeRequestMergeManager implements ChangeRequestMergeManag
             .setModifiedDocument(mergeDocumentResult.getMergeResult())
             .setTargetEntity(targetEntity);
 
-        changeRequest.addFileChange(mergeFileChange);
-        this.changeRequestStorageManager.save(changeRequest);
+        changeRequest
+            .addFileChange(mergeFileChange)
+            .updateDate();
+        String saveComment = this.contextualLocalizationManager.getTranslationPlain("changerequest.save.fixconflict");
+        this.changeRequestStorageManager.save(changeRequest, saveComment);
         this.changeRequestManagerProvider.get().computeReadyForMergingStatus(changeRequest);
         return true;
     }

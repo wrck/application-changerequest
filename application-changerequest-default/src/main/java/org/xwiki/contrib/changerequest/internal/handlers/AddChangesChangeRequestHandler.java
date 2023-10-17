@@ -101,8 +101,12 @@ public class AddChangesChangeRequestHandler extends AbstractChangeRequestActionH
             if (fileChange != null && this.checkDocumentCompatibility(changeRequest, fileChange)) {
                 this.observationManager.notify(new ChangeRequestUpdatingFileChangeEvent(), changeRequest.getId(),
                     changeRequest);
-                changeRequest.addFileChange(fileChange);
-                this.storageManager.save(changeRequest);
+                changeRequest
+                    .addFileChange(fileChange)
+                    .updateDate();
+                String saveComment =
+                    this.contextualLocalizationManager.getTranslationPlain("changerequest.save.newchange");
+                this.storageManager.save(changeRequest, saveComment);
                 this.changeRequestRightsManager.copyViewRights(changeRequest, fileChange.getTargetEntity());
                 this.copyApprovers(fileChange);
                 this.observationManager
